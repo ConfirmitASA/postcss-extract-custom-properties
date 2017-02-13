@@ -11,91 +11,125 @@ function dashedToCamel(str) {
 // ignore keyframe selectors
 var ignoredSelectors = ['to', 'from'];
 
+function getAllVariables(css) {
+  var vars = [];
+
+  css.walkRules(':root', rule => {
+    rule.walkDecls(decl => {
+      if (decl.parent.selector != ':root') {
+        return;
+      }
+
+      var name = decl.prop.trim();
+      var value = decl.value.trim();
+
+      // TODO: other cases support (now only simple var(--a[, fallback]) in a value)
+      let index;
+      while((index = value.indexOf('var(')) >= 0) {
+        const indexOfComma = value.indexOf(',', index);
+        const indexOfBracket = value.indexOf(')', index);
+        const varName = value.substring(index + 4, indexOfComma === -1 ? indexOfBracket : Math.min(indexOfComma, indexOfBracket)).trim();
+        const fallback = indexOfComma === -1 ? undefined : value.substring(indexOfComma + 1, indexOfBracket).trim();
+        let variable = vars.find(item => item.name == varName);
+        if (!variable) {
+          if (fallback) {
+            value = fallback;
+          } else {
+            return;
+          }
+        } else {
+          value = value.substring(0, index) + variable.value + value.substring(indexOfBracket + 1);
+        }
+      }
+
+      if (!vars.find(item => item.name == name)) {
+        vars.push({name, value});
+      }
+    })
+  });
+
+  return vars;
+}
+
 // plugin
-module.exports = pcss.plugin('postcss-extract-custom-properties', function () {
-    function plugin(css, result) {
-        var count = 0;
-        var vars = {};
+module.exports = pcss.plugin('reportal-postcss-extract-custom-properties', function (options) {
 
-        // resolve custom properties (css variables)
-        css.walkDecls(function (decl) {
-            var value = decl.value;
+  function plugin(css, result) {
+    var extractedProperties = {};
+    var vars = getAllVariables(css);
 
-            // Skip values that don’t contain css var functions
-            if (!value || value.indexOf('var(') === -1) {
-                return;
-            }
+    // resolve custom properties (css variables)
+    css.walkDecls(function (decl) {
 
-            // CSS selector name (.class1, #container2, etc.)
-            var selectorName = decl.parent.selector;
+      var value = decl.value;
+      const associatedVars = vars.filter(variable => value.indexOf(variable.name) >= 0);
 
-            // CSS property name (border-color, font-size, etc.)
-            var propertyName = decl.prop;
+      // Skip values that don’t contain css var functions or can't be resolved
+      if (!value || value.indexOf('var(') === -1 || associatedVars.length == 0) {
+        return;
+      }
 
-            // Extract variable name & convert to camelCase
-            // e.g. --base-color -> baseColor
-            var varName = value.replace('var(--', '').replace(')', '');
-            var varNameCamel = dashedToCamel(varName);
+      // CSS selector name (.class1, #container2, etc.)
+      var selectorName = decl.parent.selector;
+      if (selectorName.indexOf(':root') >= 0) {
+        return;
+      }
 
-            // Skip if var() is not on a short-hand selector
-            if (varNameCamel.indexOf(' ') >= 0) {
-                result.warn('Ignored short-hand property', {
-                    node: decl,
-                    word: varName
-                });
-                return;
-            }
+      // CSS property name (border-color, font-size, etc.)
+      var propertyName = decl.prop;
+      var varName = value;
+      var varNameCamel = varName;
 
-            // Skip if var() is inside a mixin function
-            if (varName.indexOf('(') >= 0) {
-                result.warn('Ignored invalid variable name', {
-                    node: decl,
-                    word: varName
-                });
-                return;
-            }
-
-            // Skip keyframes
-            if (ignoredSelectors.indexOf(selectorName) > -1 ||
-                selectorName.indexOf('%') > -1) {
-                result.warn('Ignored variable in keyframe', {
-                    node: decl,
-                    word: varName
-                });
-                return;
-            }
-
-            // varName exists in object
-            if (vars[varNameCamel]) {
-                // Create array if it does not exist
-                if (!vars[varNameCamel][propertyName]) {
-                    vars[varNameCamel][propertyName] = [];
-                }
-
-                // Avoid duplicating vars
-                if (vars[varNameCamel][propertyName]
-                    .indexOf(selectorName) === -1) {
-                    vars[varNameCamel][propertyName].push(selectorName);
-                }
-
-            // Create new property
-            } else {
-                vars[varNameCamel] = {
-                    [propertyName]: [selectorName]
-                };
-            }
-
-            // Incremenet selector count
-            count++;
+      // Skip keyframes
+      if (ignoredSelectors.indexOf(selectorName) > -1 ||
+        selectorName.indexOf('%') > -1) {
+        result.warn('Ignored variable in keyframe', {
+          node: decl,
+          word: varName
         });
+        return;
+      }
 
-        result.contents = vars;
-        result.messages.push({
-            type: 'selector-count',
-            plugin: 'postcss-extract-custom-properties',
-            count: count
-        });
-    }
+      // varName exists in object
+      let item;
+      if (decl.parent.parent.type == 'atrule') {
+        item = {
+          selectorName,
+          atrules: ['@' + decl.parent.parent.name + ' ' + decl.parent.parent.params]
+        }
+      } else {
+        item = {selectorName}
+      }
 
-    return plugin;
+
+      if (extractedProperties[varNameCamel]) {
+        // Create array if it does not exist
+        if (!extractedProperties[varNameCamel][propertyName]) {
+          extractedProperties[varNameCamel][propertyName] = [];
+        }
+
+        const index = extractedProperties[varNameCamel][propertyName].findIndex(item => item.selectorName == selectorName);
+        // Avoid duplicating vars
+        if (index === -1) {
+          extractedProperties[varNameCamel][propertyName].push(item);
+        } else {
+          const atrules = extractedProperties[varNameCamel][propertyName][index].atrules;
+          if (atrules) {
+            atrules.push(...item.atrules.filter(atrule => atrules.indexOf(atrule) === -1));
+          }
+        }
+
+        // Create new property
+      } else {
+        extractedProperties[varNameCamel] = {
+          [propertyName]: [item],
+          associatedVars
+        };
+      }
+    });
+
+    result.contents = {vars, extractedProperties};
+  }
+
+  return plugin;
 });
