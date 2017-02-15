@@ -62,6 +62,9 @@ module.exports = pcss.plugin('reportal-postcss-extract-custom-properties', funct
     css.walkDecls(function (decl) {
 
       var value = decl.value;
+      if (decl.important) {
+          value += ' !important';
+      }
       const associatedVars = vars.filter(variable => value.indexOf(variable.name) >= 0);
 
       // Skip values that don’t contain css var functions or can't be resolved
@@ -77,15 +80,13 @@ module.exports = pcss.plugin('reportal-postcss-extract-custom-properties', funct
 
       // CSS property name (border-color, font-size, etc.)
       var propertyName = decl.prop;
-      var varName = value;
-      var varNameCamel = varName;
 
       // Skip keyframes
       if (ignoredSelectors.indexOf(selectorName) > -1 ||
         selectorName.indexOf('%') > -1) {
         result.warn('Ignored variable in keyframe', {
           node: decl,
-          word: varName
+          word: value
         });
         return;
       }
@@ -102,18 +103,18 @@ module.exports = pcss.plugin('reportal-postcss-extract-custom-properties', funct
       }
 
 
-      if (extractedProperties[varNameCamel]) {
+      if (extractedProperties[value]) {
         // Create array if it does not exist
-        if (!extractedProperties[varNameCamel][propertyName]) {
-          extractedProperties[varNameCamel][propertyName] = [];
+        if (!extractedProperties[value][propertyName]) {
+          extractedProperties[value][propertyName] = [];
         }
 
-        const index = extractedProperties[varNameCamel][propertyName].findIndex(item => item.selectorName == selectorName);
+        const index = extractedProperties[value][propertyName].findIndex(item => item.selectorName == selectorName);
         // Avoid duplicating vars
         if (index === -1) {
-          extractedProperties[varNameCamel][propertyName].push(item);
+          extractedProperties[value][propertyName].push(item);
         } else {
-          const atrules = extractedProperties[varNameCamel][propertyName][index].atrules;
+          const atrules = extractedProperties[value][propertyName][index].atrules;
           if (atrules) {
             atrules.push(...item.atrules.filter(atrule => atrules.indexOf(atrule) === -1));
           }
@@ -121,7 +122,7 @@ module.exports = pcss.plugin('reportal-postcss-extract-custom-properties', funct
 
         // Create new property
       } else {
-        extractedProperties[varNameCamel] = {
+        extractedProperties[value] = {
           [propertyName]: [item],
           associatedVars
         };
