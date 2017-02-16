@@ -13,6 +13,7 @@ var ignoredSelectors = ['to', 'from'];
 
 function getAllVariables(css) {
   var vars = [];
+  var varIdentification = 'var(';
 
   css.walkRules(':root', rule => {
     rule.walkDecls(decl => {
@@ -23,23 +24,26 @@ function getAllVariables(css) {
       var name = decl.prop.trim();
       var value = decl.value.trim();
 
-      // TODO: other cases support (now only simple var(--a[, fallback]) in a value)
-      let index;
-      while((index = value.indexOf('var(')) >= 0) {
-        const indexOfComma = value.indexOf(',', index);
-        const indexOfBracket = value.indexOf(')', index);
-        const varName = value.substring(index + 4, indexOfComma === -1 ? indexOfBracket : Math.min(indexOfComma, indexOfBracket)).trim();
+      let indexOfVar;
+      while((indexOfVar = value.indexOf(varIdentification)) >= 0) {
+        const indexOfComma = value.indexOf(',', indexOfVar);
+        //const indexOfBracket = value.indexOf(')', indexOfVar);
+        const indexOfBracket = findIndexOfClosingBracket(value, indexOfVar + varIdentification.length);
+        const varName = value.substring(indexOfVar + varIdentification.length, indexOfComma === -1 ? indexOfBracket : Math.min(indexOfComma, indexOfBracket)).trim();
         const fallback = indexOfComma === -1 ? undefined : value.substring(indexOfComma + 1, indexOfBracket).trim();
         let variable = vars.find(item => item.name == varName);
+        let valueToPaste;
         if (!variable) {
           if (fallback) {
-            value = fallback;
+              valueToPaste = fallback;
           } else {
             return;
           }
         } else {
-          value = value.substring(0, index) + variable.value + value.substring(indexOfBracket + 1);
+            valueToPaste = variable.value;
         }
+
+        value = value.substring(0, indexOfVar) + valueToPaste + value.substring(indexOfBracket + 1);
       }
 
       if (!vars.find(item => item.name == name)) {
@@ -49,6 +53,27 @@ function getAllVariables(css) {
   });
 
   return vars;
+}
+
+
+function findIndexOfClosingBracket(variable, start) {
+    let numberOfBrackets = 1;
+    let closingIndex = start;
+    while(numberOfBrackets > 0) {
+        switch (variable[closingIndex]) {
+            case '(':
+                numberOfBrackets++;
+                break;
+            case ')':
+                numberOfBrackets--;
+                break;
+            default:
+                break;
+        }
+        closingIndex++;
+    }
+
+    return closingIndex - 1;
 }
 
 // plugin
