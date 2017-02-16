@@ -34,7 +34,10 @@ function getAllVariables(css) {
           }
         } else {
             valueToPaste = variable.value;
-            fallbackVariable = variable.name;
+            /** TODO: only for simple vars now**/
+            if(indexOfVar == 0 && indexOfBracket == value.length - 1) {
+                fallbackVariable = variable.name;
+            }
         }
 
         value = value.substring(0, indexOfVar) + valueToPaste + value.substring(indexOfBracket + 1);
