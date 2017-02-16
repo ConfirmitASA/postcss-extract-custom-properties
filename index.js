@@ -1,13 +1,6 @@
 // dependencies
 var pcss = require('postcss');
 
-// converts property-name to propertyName
-function dashedToCamel(str) {
-    return str.replace(/-([a-z])/g, function (m, w) {
-        return w.toUpperCase();
-    });
-}
-
 // ignore keyframe selectors
 var ignoredSelectors = ['to', 'from'];
 
@@ -27,7 +20,6 @@ function getAllVariables(css) {
       let indexOfVar;
       while((indexOfVar = value.indexOf(varIdentification)) >= 0) {
         const indexOfComma = value.indexOf(',', indexOfVar);
-        //const indexOfBracket = value.indexOf(')', indexOfVar);
         const indexOfBracket = findIndexOfClosingBracket(value, indexOfVar + varIdentification.length);
         const varName = value.substring(indexOfVar + varIdentification.length, indexOfComma === -1 ? indexOfBracket : Math.min(indexOfComma, indexOfBracket)).trim();
         const fallback = indexOfComma === -1 ? undefined : value.substring(indexOfComma + 1, indexOfBracket).trim();
