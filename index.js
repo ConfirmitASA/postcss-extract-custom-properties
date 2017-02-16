@@ -16,6 +16,7 @@ function getAllVariables(css) {
 
       var name = decl.prop.trim();
       var value = decl.value.trim();
+      var fallbackVariable;
 
       let indexOfVar;
       while((indexOfVar = value.indexOf(varIdentification)) >= 0) {
@@ -33,13 +34,18 @@ function getAllVariables(css) {
           }
         } else {
             valueToPaste = variable.value;
+            fallbackVariable = variable.name;
         }
 
         value = value.substring(0, indexOfVar) + valueToPaste + value.substring(indexOfBracket + 1);
       }
 
+      if(value != decl.value.trim()) {
+
+      }
+
       if (!vars.find(item => item.name == name)) {
-        vars.push({name, value});
+        vars.push({name, value, fallback: fallbackVariable});
       }
     })
   });
